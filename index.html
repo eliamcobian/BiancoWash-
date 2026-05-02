@@ -1612,56 +1612,50 @@ clearTimeout(t._to);t._to=setTimeout(()=>t.style.opacity=‘0’,3000);
 // Inicializar Firebase dinámicamente
 async function initFirebase(){
 try{
-const {initializeApp} = await import(‘https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js’);
-const {getFirestore,collection,doc,setDoc,getDoc,getDocs,addDoc,updateDoc,deleteDoc,onSnapshot,query,orderBy,serverTimestamp}
-= await import(‘https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js’);
-const {getStorage,ref,uploadString,getDownloadURL}
-= await import(‘https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js’);
-
-```
-const app = initializeApp(FB_CONFIG);
-db = getFirestore(app);
-window._fs = {collection,doc,setDoc,getDoc,getDocs,addDoc,updateDoc,deleteDoc,onSnapshot,query,orderBy,serverTimestamp,db};
-window._storage = {getStorage,ref,uploadString,getDownloadURL,storage:getStorage(app)};
+await Promise.all([
+loadScript(‘https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js’),
+loadScript(‘https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js’)
+]);
+firebase.initializeApp(FB_CONFIG);
+db = firebase.firestore();
 fbReady = true;
-showToast('✓ Conectado a la nube','ok');
-
-// Cargar datos iniciales
+showToast(‘✓ Conectado a la nube’,‘ok’);
 await loadAllData();
-
-// Escuchar cambios en tiempo real
 listenRealtime();
-```
-
 } catch(e){
 console.error(‘Firebase error:’,e);
-showToast(‘Modo local (sin nube)’,‘err’);
+showToast(‘Modo local (sin conexión)’,‘err’);
 fbReady = false;
 renderAdPub();renderAdCheckboxes();populateFechas();
 }
 }
 
-/* ═══════════ FIRESTORE HELPERS ═══════════ */
+function loadScript(src){
+return new Promise((resolve,reject)=>{
+if(document.querySelector(‘script[src=”’+src+’”]’)){resolve();return;}
+const s=document.createElement(‘script’);
+s.src=src;s.onload=resolve;s.onerror=reject;
+document.head.appendChild(s);
+});
+}
+
+/* ═══════════ FIRESTORE HELPERS (compat) ═══════════ */
 async function fsSet(colName, id, data){
-if(!fbReady)return;
-const {db,doc,setDoc,serverTimestamp}=window._fs;
-await setDoc(doc(db,colName,String(id)),{…data,_updated:serverTimestamp()});
+if(!fbReady||!db)return;
+await db.collection(colName).doc(String(id)).set({…data,_updated:firebase.firestore.FieldValue.serverTimestamp()},{merge:true});
 }
 async function fsAdd(colName, data){
-if(!fbReady)return null;
-const {db,collection,addDoc,serverTimestamp}=window._fs;
-const ref=await addDoc(collection(db,colName),{…data,_created:serverTimestamp()});
+if(!fbReady||!db)return null;
+const ref=await db.collection(colName).add({…data,_created:firebase.firestore.FieldValue.serverTimestamp()});
 return ref.id;
 }
 async function fsDelete(colName, id){
-if(!fbReady)return;
-const {db,doc,deleteDoc}=window._fs;
-await deleteDoc(doc(db,colName,String(id)));
+if(!fbReady||!db)return;
+await db.collection(colName).doc(String(id)).delete();
 }
 async function fsGetAll(colName){
-if(!fbReady)return[];
-const {db,collection,getDocs}=window._fs;
-const snap=await getDocs(collection(db,colName));
+if(!fbReady||!db)return[];
+const snap=await db.collection(colName).get();
 return snap.docs.map(d=>({…d.data(),_docId:d.id}));
 }
 
@@ -1728,9 +1722,9 @@ renderAdPub();renderAdCheckboxes();populateFechas();
 
 /* ═══════════ REALTIME LISTENERS ═══════════ */
 function listenRealtime(){
-const {db,collection,onSnapshot}=window._fs;
+if(!fbReady||!db)return;
 // Escuchar citas en tiempo real
-onSnapshot(collection(db,‘citas’),snap=>{
+db.collection(‘citas’).onSnapshot(snap=>{
 citas=snap.docs.map(d=>{const c=d.data();return{
 id:c.id||d.id,nombre:c.nombre||’’,tel:c.tel||’’,coto:c.coto||’’,
 casa:c.casa||’’,vehiculo:c.vehiculo||’’,tamano:c.tamano||‘ch’,
@@ -1745,7 +1739,7 @@ if(document.getElementById(‘page-admin-stats’)?.classList.contains(‘active
 }
 });
 // Escuchar solicitudes en tiempo real
-onSnapshot(collection(db,‘solicitudes’),snap=>{
+db.collection(‘solicitudes’).onSnapshot(snap=>{
 solicitudes=snap.docs.map(d=>{const s=d.data();return{
 id:s.id||d.id,nombre:s.nombre||’’,tel:s.tel||’’,coto:s.coto||’’,
 casa:s.casa||’’,vehiculo:s.vehiculo||’’,tamano:s.tamano||‘ch’,
@@ -1759,7 +1753,7 @@ if(solTab&&solTab.style.display!==‘none’)renderSolicitudes();
 }
 });
 // Escuchar clientes
-onSnapshot(collection(db,‘clientes’),snap=>{
+db.collection(‘clientes’).onSnapshot(snap=>{
 clientes=snap.docs.map(d=>{const c=d.data();return{
 id:c.id||d.id,nombre:c.nombre||’’,tel:c.tel||’’,coto:c.coto||’’,
 vehiculos:c.vehiculos||[],visitas:c.visitas||0,estrellas:c.estrellas||0,
